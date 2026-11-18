@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AI 눈도우미 | 상품 인식</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#152238;background:#f4f7fc}*{box-sizing:border-box}body{margin:0}main{max-width:580px;margin:auto;padding:24px 18px 50px}h1{font-size:30px;margin:8px 0}p{line-height:1.6}.sub{color:#475569;margin:0 0 22px}.panel{background:white;border-radius:20px;padding:20px;box-shadow:0 5px 20px #17255412;margin:15px 0}.status{padding:14px;border-radius:12px;background:#eef4ff;font-weight:700;line-height:1.6}button,.upload{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:56px;border:0;border-radius:14px;font-size:18px;font-weight:800;cursor:pointer;margin:12px 0;background:#155eef;color:white;text-align:center}.secondary{background:#e8efff;color:#123b86}.outline{background:#fff;border:2px solid #b4c6e8;color:#153d7e}button:disabled{opacity:.55;cursor:not-allowed}input[type=file]{position:absolute;width:1px;height:1px;opacity:0}img{display:none;width:100%;max-height:340px;object-fit:contain;background:#f8fafc;border-radius:14px;margin:12px 0}.result{font-size:26px;font-weight:900;margin:12px 0}.muted{color:#52627a;font-size:14px}.confidence{font-weight:700}.warning{background:#fff5e6;border-left:4px solid #ea9b24;padding:12px;border-radius:8px}.sr{position:absolute;left:-9999px}footer{font-size:13px;color:#52627a;line-height:1.6}
+</style>
+</head>
+<body><main><h1>👁️ AI 눈도우미</h1><p class="sub">상품을 촬영하면 이름을 알려드려요.<br>직접 학습한 음료수 8종을 대상으로 하는 시범 서비스입니다.</p>
+<section class="panel"><div id="status" class="status" role="status" aria-live="polite">AI 모델을 준비하고 있습니다…</div><label class="upload" for="photo">📷 상품 사진 촬영 또는 선택</label><input id="photo" type="file" accept="image/*" capture="environment" aria-label="상품 사진 촬영 또는 선택"><img id="preview" alt="선택한 상품 사진"><button id="analyze" disabled>🔎 상품 인식하기</button></section>
+<section class="panel" aria-labelledby="resultTitle"><h2 id="resultTitle">인식 결과</h2><div id="result" class="result" aria-live="polite">사진을 선택해 주세요.</div><p id="detail"></p><p id="score" class="muted"></p><button id="speak" class="secondary" disabled>🔊 결과 음성으로 듣기</button><button id="stop" class="outline">⏹ 음성 중지</button></section>
+<p class="warning"><strong>주의:</strong> 시험용 AI입니다. 등록되지 않은 제품을 잘못 인식할 수 있습니다. 알레르기 성분, 유통기한, 약품 등 안전과 관련된 판단에는 사용하지 마세요.</p>
+<footer>모델: Teachable Machine · 사진은 상품 분류를 위해 브라우저에서 처리하며 이 웹앱 자체는 사진을 서버로 업로드하지 않습니다. 모델 파일은 외부 서비스에서 불러옵니다.</footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+<script>
+(()=>{'use strict';
+const MODEL='https://teachablemachine.withgoogle.com/models/iDP6jSQd6/';
+const $=id=>document.getElementById(id);let model=null,ready=false,selected=false,lastSpeech='',objectUrl=null;
+const descriptions={'코카콜라':'탄산음료입니다.','펩시':'탄산음료입니다.','칠성사이다':'탄산음료입니다.','스프라이트':'탄산음료입니다.','포카리스웨트':'이온음료입니다.','게토레이':'스포츠음료입니다.','환타 오렌지':'오렌지맛 탄산음료입니다.','밀키스':'우유 풍미의 탄산음료입니다.'};
+function setStatus(s){$('status').textContent=s}
+function speak(s){if(!('speechSynthesis'in window)){setStatus('이 브라우저는 음성 안내를 지원하지 않습니다.');return}speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(s);u.lang='ko-KR';u.rate=.9;u.pitch=1;const voices=speechSynthesis.getVoices();const korean=voices.find(v=>v.lang.toLowerCase().startsWith('ko'));if(korean)u.voice=korean;speechSynthesis.speak(u)}
+function showResult(title,detail='',score='',speech=''){ $('result').textContent=title;$('detail').textContent=detail;$('score').textContent=score;lastSpeech=speech;$('speak').disabled=!speech }
+async function load(){try{if(!window.tmImage||!window.tf)throw Error('AI 라이브러리를 불러오지 못했습니다.');model=await tmImage.load(MODEL+'model.json',MODEL+'metadata.json');ready=true;setStatus('준비 완료! 상품 사진을 촬영해 주세요.');$('analyze').disabled=!selected}catch(e){console.error(e);setStatus('모델 로딩에 실패했습니다. 인터넷 연결을 확인하고 새로고침해 주세요.');showResult('모델을 불러올 수 없습니다.','모델 링크가 공개되어 있는지 확인해 주세요.')}}
+$('photo').addEventListener('change',()=>{const f=$('photo').files?.[0];if(!f)return;if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=URL.createObjectURL(f);selected=false;$('analyze').disabled=true;showResult('사진을 불러오는 중입니다.');$('preview').onload=()=>{selected=true;$('analyze').disabled=!ready;showResult('사진이 준비됐습니다.','상품 인식하기 버튼을 눌러주세요.');};$('preview').onerror=()=>showResult('사진을 열지 못했습니다.','다른 사진을 선택해 주세요.');$('preview').src=objectUrl;$('preview').style.display='block';speechSynthesis?.cancel()});
+$('analyze').addEventListener('click',async()=>{if(!ready||!selected)return;$('analyze').disabled=true;setStatus('상품을 분석하고 있습니다…');showResult('분석 중…');try{const preds=await model.predict($('preview'),false);if(!preds?.length)throw Error('예측 결과 없음');preds.sort((a,b)=>b.probability-a.probability);const top=preds[0],second=preds[1];const score=Math.round(top.probability*100);const gap=top.probability-(second?.probability||0);const label=String(top.className).trim();if(top.probability>=.85&&gap>=.25){const detail=descriptions[label]||'학습된 상품으로 분류됐습니다.';const msg=`${label} 제품으로 추정됩니다. ${detail} 실제 상품과 일치하는지 확인해 주세요.`;showResult(label,detail,`AI 예측 점수: ${score}% (정확도 보장 아님)`,msg);setStatus('인식이 완료됐습니다. 결과를 확인해 주세요.');speak(msg)}else{const msg='상품을 확실하게 구별하지 못했습니다. 상품 정면이 잘 보이도록 다시 촬영해 주세요.';showResult('인식 불확실',msg,`가장 높은 예측 점수: ${score}%`,msg);setStatus('인식 결과가 불확실합니다.');speak(msg)}}catch(e){console.error(e);showResult('인식 오류','다른 사진으로 다시 시도해 주세요.');setStatus('사진 분석 중 오류가 발생했습니다.')}finally{$('analyze').disabled=false}});
+$('speak').addEventListener('click',()=>{if(lastSpeech)speak(lastSpeech)});$('stop').addEventListener('click',()=>{if('speechSynthesis'in window)speechSynthesis.cancel()});window.addEventListener('pagehide',()=>{if(objectUrl)URL.revokeObjectURL(objectUrl)});load();
+})();
+</script></body></html>
